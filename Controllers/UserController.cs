@@ -11,13 +11,11 @@ namespace reservas.api.Controllers
     [ApiController]
     public class UserController : ControllerBase
     {
-        private readonly AppDbContext _context;
-        private readonly IPasswordHashService _passwordHashService;
+        private readonly IUserService _userService;
 
-        public UserController(AppDbContext context, IPasswordHashService passwordHashService)
+        public UserController(IUserService userService)
         {
-            _context = context;
-            _passwordHashService = passwordHashService;
+            _userService = userService;
         }
 
 
@@ -25,8 +23,19 @@ namespace reservas.api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAllAsync(CancellationToken ct)
         {
-            var users = await _context.Users.ToListAsync(ct);
-            return Ok(users);
+            try
+            {
+                var users = await _userService.GetAllUsersAsync(ct);
+
+                if (users == null) return NoContent();
+
+                return Ok(users);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+            
         }
 
 
@@ -34,11 +43,17 @@ namespace reservas.api.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id, CancellationToken ct)
         {
-            var user = await _context.Users.FindAsync(id, ct);
-            if (user == null)
-                return NotFound();
+            try
+            {
+                var user = await _userService.GetByIdAsync(id, ct);
+                if (user == null)
+                    return NotFound();
 
-            return Ok(user);
+                return Ok(user);
+            }catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
         }
 
 
@@ -46,14 +61,19 @@ namespace reservas.api.Controllers
         [HttpGet("search")]
         public async Task<IActionResult> GetByNameOrMatricula(string query, CancellationToken ct)
         {
-            var users = await _context.Users
-            .Where(u => u.Matricula.Contains(query) || u.Name.Contains(query))
-                .ToListAsync(ct);
+            try
+            {
+                var users = await _userService.GetByNameOrMatriculaAsync(query, ct);
 
-            if (!users.Any())
-                return NotFound();
+                if (!users.Any())
+                    return NotFound();
 
-            return Ok(users);
+                return Ok(users);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }  
         }
 
 
@@ -61,21 +81,25 @@ namespace reservas.api.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateAsync([FromBody] UserCreateModel userCreate, CancellationToken ct)
         {
-            // Validar modelo
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
 
-            // Verificar se já existe um usuário com o mesmo e-mail
-            if (await _context.Users.AnyAsync(u => u.Email == userCreate.Email, ct))
-                return Conflict("E-mail já está em uso.");
+                // Verificar se já existe um usuário com o mesmo e-mail
+                if (await _userService.SeachUserByEmailAsync(userCreate.Email, ct))
+                    return Conflict("E-mail já está em uso.");
 
-            var user = CreateUser(userCreate);
+                var user = _userService.CreateUserAsync(userCreate, ct);
 
-            user.Password = _passwordHashService.GeneratePasswordHash(userCreate.Password);
-            await _context.Users.AddAsync(user, ct);
-            await _context.SaveChangesAsync(ct);
+                if (user == null) return BadRequest("Falha ao criar o usuário, tente novamente.");
 
-            return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
+                return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
         }
 
 
@@ -83,27 +107,27 @@ namespace reservas.api.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateAsync(int id, [FromBody] UserUpdateModel userUpdate, CancellationToken ct)
         {
-            // Validar modelo
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
 
-            var user = await _context.Users.FindAsync(id);
-            if (user == null)
-                return NotFound();
+                var user = await _userService.GetByIdAsync(id, ct);
+                if (user == null)
+                    return NotFound("Erro ao buscar o usuário na base de dados.");
 
-            // Verificar se o e-mail está sendo alterado para um que já está em uso
-            if (user.Email != userUpdate.Email && await _context.Users.AnyAsync(u => u.Email == userUpdate.Email, ct))
-                return Conflict("E-mail já está em uso.");
+                // Verificar se o e-mail está sendo alterado para um que já está em uso
+                if (user.Email != userUpdate.Email)
+                    if (await _userService.SeachUserByEmailAsync(userUpdate.Email, ct))
+                        return Conflict("E-mail já está em uso.");
 
-            user.Name = userUpdate.Name;
-            user.Email = userUpdate.Email;
-            user.Matricula = userUpdate.Matricula;
-            user.Perfil = userUpdate.Perfil;
-            user.DataNascimento = userUpdate.DataNascimento;
-            user.DataAtualizacao = DateTime.Now;
-
-            await _context.SaveChangesAsync(ct);
-            return Ok(user);
+                user = await _userService.UpdateUserAsync(user, userUpdate, ct);
+                return Ok(user);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
         }
 
 
@@ -111,27 +135,17 @@ namespace reservas.api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteAsync(int id, CancellationToken ct)
         {
-            var user = await _context.Users.FindAsync(id);
-            if (user == null)
-                return NotFound();
-
-            _context.Users.Remove(user);
-            await _context.SaveChangesAsync(ct);
-
-            return Ok(user);
-        }
-
-        private UserModel CreateUser(UserCreateModel userCreate)
-        {
-            return new UserModel
+            try
             {
-                Name = userCreate.Name,
-                Email = userCreate.Email,
-                Matricula = userCreate.Matricula,
-                Perfil = userCreate.Perfil,
-                DataNascimento = userCreate.DataNascimento,
-                DataCadastro = DateTime.Now
-            };
+                if (await _userService.DeleteUserAsync(id, ct))
+                    return NotFound("Erro ao buscar o usuário na base de dados.");
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
         }
     }
 }

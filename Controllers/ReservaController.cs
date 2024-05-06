@@ -13,51 +13,69 @@ namespace reservas.api.Controllers
     [Authorize(Roles = "admin,usuario")]
     public class ReservaController : ControllerBase
     {
-        private readonly AppDbContext _context;
         private readonly IReservaService _reservaService;
 
-
-        public ReservaController(AppDbContext context, IReservaService reservaService)
+        public ReservaController(IReservaService reservaService)
         {
-            _context = context;
             _reservaService = reservaService;
         }
 
 
         [HttpGet]
-        public async Task<IActionResult> GetAllReservas(CancellationToken ct)
+        public IActionResult GetAllReservas(CancellationToken ct)
         {
-            return Ok(_reservaService.GetAllReservaAsync(ct));
+            try
+            {
+                return Ok(_reservaService.GetAllReservaAsync(ct));
+            }
+            catch (Exception ex) 
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }    
         }
 
 
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetReservaById(int id, CancellationToken ct)
+        public IActionResult GetReservaById(int id, CancellationToken ct)
         {
-            var reserva = _reservaService.GetReservaByIdAsync(id, ct);
+            try
+            {
+                var reserva = _reservaService.GetReservaByIdAsync(id, ct);
 
-            if (reserva == null)
-                return NotFound();
+                if (reserva == null)
+                    return NotFound();
 
-            return Ok(reserva);
+                return Ok(reserva);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }         
         }
 
 
         [HttpGet("user/{userId}")]
-        public async Task<IActionResult> GetReservasByUserId(int userId, CancellationToken ct)
+        public IActionResult GetReservasByUserId(int userId, CancellationToken ct)
         {
-            var reservas = _reservaService.GetReservasByUserId(userId, ct);
-            
-            if (reservas == null)
-                return NotFound();
+            try
+            {
+                var reservas = _reservaService.GetReservasByUserId(userId, ct);
 
-            return Ok(reservas);
-        }
+                if (reservas == null)
+                    return NotFound();
+
+                return Ok(reservas);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+        }   
 
 
 
         [HttpGet("date")]
-        public async Task<IActionResult> GetReservasByDateRange(DateTime start, DateTime end, CancellationToken ct)
+        public IActionResult GetReservasByDateRange(DateTime start, DateTime end, CancellationToken ct)
         {
             try
             {
@@ -78,41 +96,62 @@ namespace reservas.api.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateReserva([FromBody] ReservaModelRequest reservaRequest, CancellationToken ct)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            ReservaModel reserva = CreateReservaModel(reservaRequest);
-
-            var validationResult = await _reservaService.ValidateReservaAsync(reserva, ct);
-            if (!validationResult.IsValid)
+            try
             {
-                return BadRequest(validationResult.ErrorMessage);
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                ReservaModel reserva = CreateReservaModel(reservaRequest);
+
+                var validationResult = await _reservaService.ValidateReservaAsync(reserva, ct);
+                if (!validationResult.IsValid)
+                {
+                    return BadRequest(validationResult.ErrorMessage);
+                }
+
+                await _reservaService.CreateReservaAsync(reserva, ct);
+
+                return CreatedAtAction(nameof(GetReservaById), new { id = reserva.Id, ct }, reserva);
             }
-
-            await _reservaService.CreateReservaAsync(reserva, ct);
-
-            return CreatedAtAction(nameof(GetReservaById), new { id = reserva.Id, ct}, reserva);
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }       
         }
 
 
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateReserva(int id, [FromBody] ReservaModelRequest reservaRequest, CancellationToken ct)
         {
-            if (reservaRequest == null)
-                return BadRequest();
+            try
+            {
+                if (reservaRequest == null)
+                    return BadRequest();
 
-            var reserva = await _reservaService.UpdateReservaAsync(id, reservaRequest, ct);
+                var reserva = await _reservaService.UpdateReservaAsync(id, reservaRequest, ct);
 
-            return Ok(reserva);
+                return Ok(reserva);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }          
         }
 
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteReservaAsync(int id, CancellationToken ct)
         {
-            if (await _reservaService.DeleteReservaAsync(id, ct)) return NotFound();
+            try
+            {
+                if (await _reservaService.DeleteReservaAsync(id, ct)) return NotFound();
 
-            return NoContent();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }          
         }
 
 

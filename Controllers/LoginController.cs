@@ -12,33 +12,37 @@ namespace reservas.api.Controllers
     [ApiController]
     public class LoginController : ControllerBase
     {
-        private readonly AppDbContext _context;
-        private readonly IPasswordHashService _passwordHashService;
-        private readonly ITokenService _tokenService;
+        private readonly ILoginService _loginService;
 
 
-        public LoginController(AppDbContext context, 
-                               IPasswordHashService passwordHashService,
-                               ITokenService tokenService)
+        public LoginController(ILoginService loginService)
         {
-            _context = context;
-            _passwordHashService = passwordHashService;
-            _tokenService = tokenService;
+            _loginService = loginService;
         }
 
         [HttpPost]
         public async Task<IActionResult> LoginAsync([FromBody] LoginModel login, CancellationToken ct)
         {
-            var user = await _context.Users.SingleOrDefaultAsync(u => u.Email == login.Email, ct);
+            try
+            {
+                if(!ModelState.IsValid)
+                    return BadRequest(ModelState);
 
-            if (user == null)
-                return NotFound();
+                var user = await _loginService.GetUsersByEmailAsync(login.Email, ct);
 
-            if (!_passwordHashService.VerifyPassword(login.Password, user.Password))
-                return Unauthorized();
+                if (user == null) return NotFound("E-mail não encontrado.");
 
-            var token = _tokenService.Generate(user);
-            return Ok(new { Token = token });
+                var token = _loginService.LoginAsync(login, user, ct);
+
+                if (token.Equals("")) return Unauthorized();
+
+                return Ok( new { Token = token });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
+            
         }
     }
 }
